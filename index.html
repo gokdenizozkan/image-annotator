@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Annotator</title>
+<link rel="stylesheet" href="sakura/sakura.css" />
+<link rel="stylesheet" href="muvazin.css" />
+<style>
+  * { box-sizing: border-box; }
+  .app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    gap: 14px;
+    width: 100%;
+  }
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+    aspect-ratio: 900 / 560;
+    background: var(--theme-color-canvas);
+    border: 2px solid var(--theme-color-text-reading);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    cursor: crosshair;
+    outline: none;
+  }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--theme-color-text-reading);
+    font-size: 15px;
+    user-select: none;
+    text-align: center;
+    padding: 0 1rem;
+  }
+  .placeholder .placeholder-text { opacity: 0.7; }
+  .placeholder.hidden { display: none; }
+
+  .export {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 100%;
+    background: var(--theme-color-block-background);
+    border: 1px solid var(--theme-color-text-reading);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  .group { display: flex; align-items: center; gap: 4px; }
+  .separator {
+    width: 1px;
+    height: 26px;
+    background: var(--theme-color-text-reading);
+    opacity: 0.3;
+    margin: 0 6px;
+  }
+  .toolbar button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--theme-color-text-reading);
+    border-radius: 4px;
+    padding: 0;
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .12s, border-color .12s;
+  }
+  .toolbar button:hover {
+    background: var(--theme-color-canvas);
+    border-color: var(--theme-color-text-reading);
+    color: var(--theme-color-text-reading);
+  }
+  .toolbar button.active {
+    background: var(--theme-color-action-primary);
+    border-color: var(--theme-color-action-primary);
+    color: var(--theme-color-canvas);
+  }
+
+  .tool, .act {
+    width: 36px;
+    height: 36px;
+  }
+  .tool svg, .act svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  .swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--theme-color-text-reading);
+  }
+  .swatch:hover { transform: scale(1.08); }
+  .swatch.active {
+    border-color: var(--theme-color-action-focus);
+    box-shadow: 0 0 0 2px var(--theme-color-action-focus);
+  }
+
+  .thick { width: 36px; height: 36px; }
+  .thick .dot {
+    display: inline-block;
+    background: currentColor;
+    border-radius: 50%;
+  }
+
+  .hint {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+
+  body { max-width: 1100px; }
+
+  .text-editor {
+    position: absolute;
+    min-width: 56px;
+    display: grid;
+    gap: 4px;
+    padding: 6px;
+    border: 1px dashed var(--theme-color-action-focus, #3b82f6);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    transform-origin: top left;
+    z-index: 5;
+  }
+  .text-editor.dragging {
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.2);
+  }
+  .text-editor-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 18px;
+    margin: 0 auto;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.12);
+    cursor: grab;
+    touch-action: none;
+  }
+  .text-editor-handle::before {
+    content: '';
+    width: 18px;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.45;
+  }
+  .text-editor.dragging .text-editor-handle { cursor: grabbing; }
+  .text-editor-input {
+    min-width: 40px;
+    min-height: 1.2em;
+    padding: 2px 4px;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.2;
+    user-select: text;
+    cursor: text;
+  }
+  .text-editor-input[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    color: rgba(15, 23, 42, 0.42);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="canvas" tabindex="0"></canvas>
+      <div class="placeholder" id="placeholder">
+        <div class="placeholder-text">Paste an image with Ctrl/Cmd+V, or open one from your device.</div>
+        <div>
+          <button type="button" id="openBtn" onclick="document.getElementById('openInput').click()">Open image…</button>
+          <input type="file" id="openInput" accept="image/*" style="display:none" />
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <div class="group" role="group" aria-label="Tools">
+        <button class="tool active" data-tool="pen" title="Pen (freehand)" aria-label="Pen">
+          <svg viewBox="0 0 24 24"><path d="M3 21l3.5-1 11-11-2.5-2.5-11 11L3 21zm14.7-14.3l2.1-2.1a1 1 0 0 1 1.4 0l1.2 1.2a1 1 0 0 1 0 1.4l-2.1 2.1-2.6-2.6z"/></svg>
+        </button>
+        <button class="tool" data-tool="line" title="Line" aria-label="Line">
+          <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+        </button>
+        <button class="tool" data-tool="arrow" title="Arrow" aria-label="Arrow">
+          <svg viewBox="0 0 24 24"><path d="M4 20 L20 4 M20 4 L13 4 M20 4 L20 11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tool" data-tool="rect" title="Rectangle" aria-label="Rectangle">
+          <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
+        </button>
+        <button class="tool" data-tool="circle" title="Circle / Ellipse" aria-label="Circle or ellipse">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="7" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>
+        </button>
+        <button class="tool" data-tool="text" title="Text" aria-label="Text">
+          <svg viewBox="0 0 24 24"><path d="M5 4h14v3h-1.5V5.5h-4.75v13H14V20h-4v-1.5h1.25v-13H6.5V7H5V4z"/></svg>
+        </button>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="group colors" role="group" aria-label="Colors" id="colors">
+        <button class="swatch active" data-color="#ef4444" style="background:#ef4444" aria-label="Red"></button>
+        <button class="swatch" data-color="#f59e0b" style="background:#f59e0b" aria-label="Orange"></button>
+        <button class="swatch" data-color="#10b981" style="background:#10b981" aria-label="Green"></button>
+        <button class="swatch" data-color="#3b82f6" style="background:#3b82f6" aria-label="Blue"></button>
+        <button class="swatch" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Purple"></button>
+        <button class="swatch" data-color="#000000" style="background:#000000" aria-label="Black"></button>
+        <button class="swatch" data-color="#ffffff" style="background:#ffffff" aria-label="White"></button>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="group thicks" role="group" aria-label="Thickness" id="thicks">
+        <button class="thick" data-thick="2" title="Thin" aria-label="Thin"><span class="dot" style="width:4px;height:4px"></span></button>
+        <button class="thick active" data-thick="5" title="Medium" aria-label="Medium"><span class="dot" style="width:8px;height:8px"></span></button>
+        <button class="thick" data-thick="10" title="Thick" aria-label="Thick"><span class="dot" style="width:14px;height:14px"></span></button>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="group" role="group" aria-label="History">
+        <button class="act" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">
+          <svg viewBox="0 0 24 24"><path d="M9 14H5v-4l-3 4 3 4v-4h4a6 6 0 0 0 0-12H8v2h1a4 4 0 0 1 0 8z" transform="translate(3 0)"/></svg>
+        </button>
+        <button class="act" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">
+          <svg viewBox="0 0 24 24" style="transform:scaleX(-1)"><path d="M9 14H5v-4l-3 4 3 4v-4h4a6 6 0 0 0 0-12H8v2h1a4 4 0 0 1 0 8z" transform="translate(3 0)"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="export" role="group" aria-label="Export">
+      <button type="button" id="downloadBtn" aria-label="Download image">Download</button>
+      <button type="button" id="copyBtn" aria-label="Copy image to clipboard">Copy to Clipboard</button>
+    </div>
+
+    <div class="hint">Shift locks axis · Ctrl/Cmd+C copies image · Ctrl/Cmd+V pastes</div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
